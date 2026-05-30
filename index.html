@@ -426,7 +426,15 @@ function txa(id,val=''){ return `<textarea id="${id}" rows="3">${val||''}</texta
 
 function tbl(headers,rows){
   if(!rows.length) return `<div class="empty">📭 لا توجد بيانات بعد</div>`;
-  return `<div class="tbl-wrap"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+  const tid='t'+Math.random().toString(36).slice(2,6);
+  const searchBar = rows.length>6?`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)">
+    <input type="text" placeholder="🔍 بحث في الجدول..." 
+      style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);font-family:'Cairo',sans-serif"
+      oninput="(function(q,id){const t=document.getElementById(id);if(!t)return;let v=0;t.querySelectorAll('tbody tr').forEach(r=>{const s=!q||r.textContent.toLowerCase().includes(q.toLowerCase());r.style.display=s?'':'none';if(s)v++;});const c=document.getElementById('c'+id);if(c)c.textContent=v+' من ${rows.length}';})(this.value,'${tid}')">
+    <span id="c${tid}" style="font-size:11px;color:var(--muted);white-space:nowrap">${rows.length} سجل</span>
+  </div>`:'';
+  const thHTML = headers.map(h=>`<th onclick="(function(th){if(!th)return;const t=document.getElementById('${tid}');if(!t)return;const i=Array.from(t.querySelectorAll('th')).indexOf(th);const k='s${tid}'+i;const asc=!window._st?.[k];if(!window._st)window._st={};window._st[k]=asc;Array.from(t.querySelectorAll('th')).forEach(x=>{const a=x.querySelector('.sa');if(a)a.textContent='';});const a=th.querySelector('.sa')||Object.assign(document.createElement('span'),{className:'sa',style:'font-size:9px;margin-right:3px;color:var(--green-light)'});th.prepend(a);a.textContent=asc?'↑':'↓';const rows=Array.from(t.querySelectorAll('tbody tr')).filter(r=>r.style.display!=='none');rows.sort((a,b)=>{const av=a.cells[i]?.textContent?.trim()||'';const bv=b.cells[i]?.textContent?.trim()||'';const an=parseFloat(av.replace(/[^0-9.]/g,''));const bn=parseFloat(bv.replace(/[^0-9.]/g,''));if(!isNaN(an)&&!isNaN(bn))return asc?an-bn:bn-an;return asc?av.localeCompare(bv,'ar'):bv.localeCompare(av,'ar');});const tb=t.querySelector('tbody');rows.forEach(r=>tb.appendChild(r));})(this)" style="cursor:pointer;user-select:none" title="اضغط للترتيب"><span class="sa"></span>${h}</th>`).join('');
+  return searchBar+`<div class="tbl-wrap"><table id="${tid}"><thead><tr>${thHTML}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
 }
 function tr(...cells){ return `<tr>${cells.map(c=>`<td>${c}</td>`).join('')}</tr>`; }
 
@@ -519,6 +527,11 @@ function go(page){
   renderNav();
   closeModal();
   (PAGES[page]||PAGES.dashboard)();
+  // UX refresh
+  setTimeout(()=>{
+    const alerts=getDashboardAlerts?.();
+    if(alerts){const b=document.getElementById('alerts-badge');if(b){b.textContent=alerts.length||'';b.style.display=alerts.length?'flex':'none';}}
+  },300);
 }
 
 // ═══════════════════════════════════════════════
@@ -8184,28 +8197,7 @@ document.addEventListener('keydown', function(e){
 });
 
 // ══ 8. TABLE SEARCH INLINE (per-page) ────────────────────────
-// Override tbl() helper to add search + sort automatically
-const _origTbl = tbl;
-function tbl(headers, rows){
-  const tableId = 'tbl-' + Math.random().toString(36).slice(2,7);
-  const inner   = _origTbl(headers, rows);
 
-  // Inject id into table
-  const withId  = inner.replace('<table>', `<table id="${tableId}">`);
-
-  const searchBar = rows.length > 5 ? `
-    <div style="display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);align-items:center">
-      <input type="text" placeholder="🔍 ابحث..." 
-        style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);font-family:'Cairo',sans-serif"
-        oninput="(function(q){const t=document.getElementById('${tableId}');if(!t)return;let v=0;t.querySelectorAll('tbody tr').forEach(r=>{const s=r.textContent.toLowerCase().includes(q.toLowerCase());r.style.display=s?'':'none';if(s)v++;});const c=document.getElementById('cnt-${tableId}');if(c)c.textContent=v+' سجل';})(this.value)">
-      <span id="cnt-${tableId}" style="font-size:11px;color:var(--muted);white-space:nowrap">${rows.length} سجل</span>
-    </div>` : '';
-
-  return searchBar + withId.replace(
-    '<thead>',
-    `<thead onclick="(function(th){if(th.tagName!=='TH')return;const t=document.getElementById('${tableId}');const i=Array.from(t.querySelectorAll('th')).indexOf(th);if(i<0)return;const k='${tableId}-'+i;const asc=!window._srt?.[k];window._srt=window._srt||{};window._srt[k]=asc;const rows=Array.from(t.querySelectorAll('tbody tr'));rows.sort((a,b)=>{const av=a.cells[i]?.textContent?.trim()||'';const bv=b.cells[i]?.textContent?.trim()||'';const an=parseFloat(av.replace(/,/g,''));const bn=parseFloat(bv.replace(/,/g,''));if(!isNaN(an)&&!isNaN(bn))return asc?an-bn:bn-an;return asc?av.localeCompare(bv,'ar'):bv.localeCompare(av,'ar');});const tb=t.querySelector('tbody');rows.forEach(r=>tb.appendChild(r));th.querySelectorAll('span.sort-arr').forEach(s=>s.remove());const arr=document.createElement('span');arr.className='sort-arr';arr.style.cssText='font-size:9px;margin-right:4px;color:var(--green-light)';arr.textContent=asc?'↑':'↓';th.prepend(arr);})(event.target.closest('th'))">`
-  );
-}
 
 // ══ 9. CONFIRM DELETE (better UX) ────────────────────────────
 function confirmDelete(msg, onConfirm){
@@ -8260,12 +8252,8 @@ function initUXFeatures(){
 
 // Auto-run after page loads
 window.addEventListener('load', ()=> setTimeout(initUXFeatures, 500));
-// Re-run on page change
-const _origGo = go;
-function go(page){
-  _origGo(page);
-  setTimeout(initUXFeatures, 200);
-}
+// Re-run on page change — patch via event instead of redefine
+document.addEventListener('erp-page-changed', ()=> setTimeout(initUXFeatures, 200));
 
 // renderNav/go called by coEnter() after company is selected
 
