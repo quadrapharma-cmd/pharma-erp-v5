@@ -425,30 +425,28 @@ function sel(id,opts,val=''){ return `<select id="${id}">${opts.map(o=>{ const v
 function txa(id,val=''){ return `<textarea id="${id}" rows="3">${val||''}</textarea>`; }
 
 function tbl(headers,rows){
-  if(!rows.length) return '<div class="empty">📭 لا توجد بيانات بعد</div>';
-  const tid = 'tbl' + Math.random().toString(36).slice(2,6);
-  const total = rows.length;
-  let html2 = '';
-  // Search bar (only if >6 rows)
-  if(total > 6){
-    html2 += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)">'
-           + '<input type="text" placeholder="🔍 بحث في الجدول..." id="si'+tid+'"'
-           + ' style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);font-family:Cairo,sans-serif"'
-           + ' oninput="tblSearch(this,''+tid+'')">'
-           + '<span id="sc'+tid+'" style="font-size:11px;color:var(--muted);white-space:nowrap">'+total+' سجل</span>'
-           + '</div>';
+  if(!rows.length) return '<div class="empty">\u{1F4ED} \u0644\u0627 \u062a\u0648\u062c\u062f \u0628\u064a\u0627\u0646\u0627\u062a \u0628\u0639\u062f</div>';
+  var tid='tbl'+Math.random().toString(36).slice(2,6);
+  var total=rows.length;
+  var out='';
+  if(total>6){
+    out+='<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)">';
+    out+='<input type="text" placeholder="\uD83D\uDD0D \u0628\u062d\u062b \u0641\u064a \u0627\u0644\u062c\u062f\u0648\u0644..." id="si'+tid+'"';
+    out+=' style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);font-family:Cairo,sans-serif"';
+    out+=' oninput="tblSearch(this,\''+tid+'\')">';
+    out+='<span id="sc'+tid+'" style="font-size:11px;color:var(--muted);white-space:nowrap">'+total+' \u0633\u062c\u0644</span>';
+    out+='</div>';
   }
-  // Table
-  const thCells = headers.map(function(h,i){
-    return '<th onclick="tblSort(this,\'' + tid + '\',' + i + ')" style="cursor:pointer;user-select:none">'
-         + '<span class="sort-arr" style="font-size:9px;margin-left:4px;color:var(--green-light)"></span>'
-         + h + '</th>';
+  var thCells=headers.map(function(h,i){
+    return '<th onclick="tblSort(this,\''+tid+'\','+i+')" style="cursor:pointer;user-select:none">'
+          +'<span class="sort-arr" style="font-size:9px;margin-left:4px;color:var(--green-light)"></span>'
+          +h+'</th>';
   }).join('');
-  html2 += '<div class="tbl-wrap"><table id="' + tid + '">'
-         + '<thead><tr>' + thCells + '</tr></thead>'
-         + '<tbody>' + rows.join('') + '</tbody>'
-         + '</table></div>';
-  return html2;
+  out+='<div class="tbl-wrap"><table id="'+tid+'">'
+     +'<thead><tr>'+thCells+'</tr></thead>'
+     +'<tbody>'+rows.join('')+'</tbody>'
+     +'</table></div>';
+  return out;
 }
 function tblSearch(inp, tid){
   const q = inp.value.toLowerCase();
