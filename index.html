@@ -318,7 +318,18 @@ strong{font-weight:700;color:var(--text)}
       <h1 id="pg-title">لوحة التحكم</h1>
       <p id="pg-sub"></p>
     </div>
+    <div id="search-wrap" style="position:relative;flex:1;max-width:340px;margin:0 12px">
+      <input id="global-search-bar" type="text" placeholder="🔍 بحث شامل... (Ctrl+K)"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:13px;color:var(--text);font-family:'Cairo',sans-serif;transition:border .15s"
+        onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--border)'">
+    </div>
     <div style="display:flex;align-items:center;gap:8px">
+      <button id="alerts-btn" onclick="showAlertsDropdown()" 
+        style="position:relative;background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--text);font-size:16px;transition:.15s"
+        title="التنبيهات">
+        🔔
+        <span id="alerts-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;border-radius:99px;font-size:10px;font-weight:700;min-width:16px;height:16px;align-items:center;justify-content:center;padding:0 4px;font-family:'Cairo',sans-serif"></span>
+      </button>
       <button class="co-switch-btn" id="co-switch-btn" onclick="coShowScreen()">
         🏢 <span id="co-active-label">الشركة</span>
       </button>
@@ -326,7 +337,7 @@ strong{font-weight:700;color:var(--text)}
         📊 Excel
       </button>
       <button class="btn btn-ghost btn-sm" onclick="showBackupPanel()">
-        ☁️ نسخة احتياطية
+        💾 Backup
       </button>
       <div id="pg-action"></div>
     </div>
@@ -7783,6 +7794,477 @@ function doImportBackup(input){
     }catch(err){alert('❌ '+err.message);}
   };
   reader.readAsText(file);
+}
+
+// ════════════════════════════════════════════════════════════════
+// UX FEATURES — بحث + فلترة + ترتيب + pagination + إشعارات
+// ════════════════════════════════════════════════════════════════
+
+// ══ 1. GLOBAL SEARCH ─────────────────────────────────────────
+let _searchTimeout = null;
+
+function initGlobalSearch(){
+  const bar = document.getElementById('global-search-bar');
+  if(!bar) return;
+  bar.addEventListener('input', function(){
+    clearTimeout(_searchTimeout);
+    const q = this.value.trim();
+    if(q.length < 2){ closeSearchResults(); return; }
+    _searchTimeout = setTimeout(()=> runGlobalSearch(q), 300);
+  });
+  bar.addEventListener('keydown', e=>{
+    if(e.key==='Escape'){ bar.value=''; closeSearchResults(); }
+  });
+  document.addEventListener('click', e=>{
+    if(!e.target.closest('#search-wrap')) closeSearchResults();
+  });
+}
+
+function runGlobalSearch(q){
+  q = q.toLowerCase();
+  const results = [];
+
+  // Products
+  getAll('products').forEach(p=>{
+    if((p.name||'').toLowerCase().includes(q)||(p.scientificName||'').toLowerCase().includes(q)){
+      results.push({type:'منتج',icon:'💊',label:p.name,sub:p.dosageForm+' '+( p.strength||''),page:'products',id:p.id});
+    }
+  });
+  // Materials
+  getAll('materials').forEach(m=>{
+    if((m.name||'').toLowerCase().includes(q)||(m.supplier||'').toLowerCase().includes(q)){
+      results.push({type:'مادة',icon:'🧪',label:m.name,sub:`مخزون: ${fmtN(m.currentStock||0)} ${m.unit}`,page:'materials',id:m.id});
+    }
+  });
+  // Distributors
+  getAll('distributors').forEach(d=>{
+    if((d.name||'').toLowerCase().includes(q)||(d.contactPerson||'').toLowerCase().includes(q)){
+      results.push({type:'موزع',icon:'🏢',label:d.name,sub:d.phone||'',page:'distributors',id:d.id});
+    }
+  });
+  // Employees
+  getAll('employees').forEach(e=>{
+    if((e.name||'').toLowerCase().includes(q)||(e.position||'').toLowerCase().includes(q)){
+      results.push({type:'موظف',icon:'👤',label:e.name,sub:`${e.department} — ${e.position}`,page:'employees',id:e.id});
+    }
+  });
+  // Expenses
+  getAll('expenses').forEach(e=>{
+    if((e.description||'').toLowerCase().includes(q)||(e.category||'').toLowerCase().includes(q)){
+      results.push({type:'مصروف',icon:'🧾',label:e.description,sub:`${fmt(e.amount)} ج.م — ${e.category}`,page:'expenses',id:e.id});
+    }
+  });
+  // CMOs
+  getAll('cmos').forEach(c=>{
+    if((c.name||'').toLowerCase().includes(q)){
+      results.push({type:'مصنع',icon:'🏭',label:c.name,sub:c.licenseNumber||'',page:'cmos',id:c.id});
+    }
+  });
+  // Delivery Orders
+  getAll('deliveryOrders').forEach(o=>{
+    const d = getById('distributors',o.distributorId);
+    if((o.orderNumber||'').toLowerCase().includes(q)||(d?.name||'').toLowerCase().includes(q)){
+      results.push({type:'أمر توريد',icon:'🚚',label:o.orderNumber||'DO-'+o.id,sub:`${d?.name||'—'} — ${fmt(o.totalAmount)} ج.م`,page:'deliveries',id:o.id});
+    }
+  });
+  // Production Orders
+  getAll('productionOrders').forEach(o=>{
+    const p = getById('products',o.productId);
+    if((o.orderNumber||'').toLowerCase().includes(q)||(p?.name||'').toLowerCase().includes(q)){
+      results.push({type:'تشغيلة',icon:'⚙️',label:o.orderNumber||'PO-'+o.id,sub:p?.name||'—',page:'production',id:o.id});
+    }
+  });
+  // Registrations
+  getAll('registrations').forEach(r=>{
+    const p=getById('products',r.productId);
+    if((r.registrationNumber||'').toLowerCase().includes(q)||(p?.name||'').toLowerCase().includes(q)){
+      results.push({type:'تسجيل',icon:'📑',label:r.registrationNumber||p?.name||'—',sub:p?.name||'',page:'registration',id:r.id});
+    }
+  });
+
+  showSearchResults(results.slice(0,12), q);
+}
+
+function showSearchResults(results, q){
+  let drop = document.getElementById('search-dropdown');
+  if(!drop){
+    drop = document.createElement('div');
+    drop.id = 'search-dropdown';
+    drop.style.cssText = `position:absolute;top:100%;right:0;left:0;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.4);z-index:1000;max-height:400px;overflow-y:auto;margin-top:4px`;
+    document.getElementById('search-wrap').appendChild(drop);
+  }
+  if(!results.length){
+    drop.innerHTML=`<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">🔍 لا توجد نتائج لـ "${q}"</div>`;
+    return;
+  }
+  drop.innerHTML = results.map(r=>`
+    <div onclick="go('${r.page}');closeSearchResults()" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid rgba(48,54,61,.4);transition:.1s" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background=''">
+      <span style="font-size:18px;width:28px;text-align:center">${r.icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px;color:var(--text)">${r.label}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.sub}</div>
+      </div>
+      <span class="badge b-gray" style="font-size:10px;flex-shrink:0">${r.type}</span>
+    </div>`).join('') +
+    `<div style="padding:8px 14px;font-size:11px;color:var(--muted);text-align:center">${results.length} نتيجة</div>`;
+}
+
+function closeSearchResults(){
+  const d = document.getElementById('search-dropdown');
+  if(d) d.remove();
+}
+
+// ══ 2. TABLE FILTER + SORT ───────────────────────────────────
+function addTableControls(tableId, searchCols){
+  const table = document.getElementById(tableId);
+  if(!table) return;
+
+  const wrap = table.closest('.tbl-wrap') || table.parentElement;
+  const ctrl = document.createElement('div');
+  ctrl.style.cssText='display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap';
+  ctrl.innerHTML=`
+    <input type="text" placeholder="🔍 ابحث في الجدول..." id="tbl-filter-${tableId}"
+      style="flex:1;min-width:200px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text);font-family:'Cairo',sans-serif"
+      oninput="filterTable('${tableId}',this.value)">
+    <span id="tbl-count-${tableId}" style="font-size:11px;color:var(--muted)"></span>
+    <button onclick="clearTableFilter('${tableId}')" class="btn btn-ghost btn-sm">مسح</button>`;
+
+  wrap.insertBefore(ctrl, wrap.firstChild);
+  updateTableCount(tableId);
+}
+
+function filterTable(tableId, q){
+  const table = document.getElementById(tableId)||document.querySelector('table');
+  if(!table) return;
+  const rows  = table.querySelectorAll('tbody tr');
+  let visible = 0;
+  rows.forEach(row=>{
+    const text = row.textContent.toLowerCase();
+    const show = !q || text.includes(q.toLowerCase());
+    row.style.display = show ? '' : 'none';
+    if(show) visible++;
+  });
+  const cnt = document.getElementById(`tbl-count-${tableId}`);
+  if(cnt) cnt.textContent = `${visible} من ${rows.length}`;
+}
+
+function clearTableFilter(tableId){
+  const inp = document.getElementById(`tbl-filter-${tableId}`);
+  if(inp){ inp.value=''; filterTable(tableId,''); }
+}
+
+function updateTableCount(tableId){
+  const table=document.getElementById(tableId)||document.querySelector('table');
+  if(!table) return;
+  const cnt=table.querySelectorAll('tbody tr').length;
+  const el=document.getElementById(`tbl-count-${tableId}`);
+  if(el) el.textContent=`${cnt} سجل`;
+}
+
+// ══ 3. SORTABLE TABLE HEADERS ────────────────────────────────
+let _sortState = {};
+
+function makeSortable(tableId){
+  const table = document.getElementById(tableId)||document.querySelector('table');
+  if(!table) return;
+  table.querySelectorAll('thead th').forEach((th,i)=>{
+    th.style.cursor='pointer';
+    th.style.userSelect='none';
+    const orig = th.innerHTML;
+    th.innerHTML=`<div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
+      <span id="sort-icon-${tableId}-${i}" style="font-size:10px;color:var(--muted)">⇅</span>
+      ${orig}
+    </div>`;
+    th.onclick=()=> sortTable(tableId, i);
+  });
+}
+
+function sortTable(tableId, colIdx){
+  const table = document.getElementById(tableId)||document.querySelector('table');
+  if(!table) return;
+  const key   = `${tableId}-${colIdx}`;
+  const asc   = _sortState[key] !== true;
+  _sortState  = { [key]: asc };
+
+  // Update icons
+  table.querySelectorAll('[id^="sort-icon-"]').forEach(el=>{ el.textContent='⇅'; el.style.color='var(--muted)'; });
+  const icon = document.getElementById(`sort-icon-${key}`);
+  if(icon){ icon.textContent = asc?'↑':'↓'; icon.style.color='var(--green-light)'; }
+
+  const tbody  = table.querySelector('tbody');
+  const rows   = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((a,b)=>{
+    const aVal = a.cells[colIdx]?.textContent?.trim()||'';
+    const bVal = b.cells[colIdx]?.textContent?.trim()||'';
+    // Try numeric
+    const aNum = parseFloat(aVal.replace(/[,٠-٩]/g,c=>c>='٠'?c.charCodeAt(0)-'٠'.charCodeAt(0):c));
+    const bNum = parseFloat(bVal.replace(/[,٠-٩]/g,c=>c>='٠'?c.charCodeAt(0)-'٠'.charCodeAt(0):c));
+    if(!isNaN(aNum)&&!isNaN(bNum)) return asc ? aNum-bNum : bNum-aNum;
+    return asc ? aVal.localeCompare(bVal,'ar') : bVal.localeCompare(aVal,'ar');
+  });
+  rows.forEach(r=>tbody.appendChild(r));
+}
+
+// ══ 4. NOTIFICATIONS ─────────────────────────────────────────
+const _notifications = [];
+
+function showNotif(msg, type='success', duration=4000){
+  const id   = Date.now();
+  const colors= { success:'var(--green)', error:'var(--red)', warning:'var(--amber)', info:'var(--blue)' };
+  const icons = { success:'✅', error:'❌', warning:'⚠️', info:'ℹ️' };
+
+  const notif = document.createElement('div');
+  notif.id    = `notif-${id}`;
+  notif.style.cssText=`
+    position:fixed;bottom:20px;left:20px;z-index:9999;
+    background:var(--card);border:1px solid ${colors[type]};border-radius:10px;
+    padding:12px 16px;display:flex;align-items:center;gap:10px;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);font-family:'Cairo',sans-serif;
+    font-size:13px;color:var(--text);max-width:350px;
+    animation:slideInNotif .3s ease;min-width:250px;direction:rtl`;
+  notif.innerHTML=`
+    <span style="font-size:18px">${icons[type]||'ℹ️'}</span>
+    <span style="flex:1">${msg}</span>
+    <button onclick="dismissNotif(${id})" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px;line-height:1">×</button>`;
+
+  // Add animation keyframes once
+  if(!document.getElementById('notif-style')){
+    const style=document.createElement('style');
+    style.id='notif-style';
+    style.textContent=`
+      @keyframes slideInNotif{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+      @keyframes slideOutNotif{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(20px)}}`;
+    document.head.appendChild(style);
+  }
+
+  let container=document.getElementById('notif-container');
+  if(!container){
+    container=document.createElement('div');
+    container.id='notif-container';
+    container.style.cssText='position:fixed;bottom:20px;left:20px;z-index:9999;display:flex;flex-direction:column;gap:8px';
+    document.body.appendChild(container);
+  }
+  container.appendChild(notif);
+
+  if(duration>0) setTimeout(()=>dismissNotif(id), duration);
+  return id;
+}
+
+function dismissNotif(id){
+  const el=document.getElementById(`notif-${id}`);
+  if(!el) return;
+  el.style.animation='slideOutNotif .3s ease forwards';
+  setTimeout(()=>el.remove(), 300);
+}
+
+// ══ 5. SMART ALERTS DASHBOARD ────────────────────────────────
+function getDashboardAlerts(){
+  const alerts = [];
+  const now    = new Date();
+
+  // منتهي الصلاحية
+  getAll('inventory').forEach(i=>{
+    if(!i.expiryDate) return;
+    const days=Math.floor((new Date(i.expiryDate)-now)/86400000);
+    const p=getById('products',i.productId);
+    if(days<0)   alerts.push({type:'error',  msg:`${p?.name||'منتج'} — منتهي الصلاحية`, page:'inventory'});
+    else if(days<=30) alerts.push({type:'warning',msg:`${p?.name||'منتج'} — ينتهي بعد ${days} يوم`, page:'inventory'});
+  });
+
+  // مواد تحت حد الطلب
+  getAll('materials').filter(m=>m.reorderLevel&&Number(m.currentStock||0)<=Number(m.reorderLevel))
+    .forEach(m=> alerts.push({type:'warning',msg:`${m.name} — مخزون منخفض (${fmtN(m.currentStock||0)} ${m.unit})`, page:'materials'}));
+
+  // تسجيل دوائي منتهي
+  getAll('registrations').filter(r=>r.expiryDate&&new Date(r.expiryDate)<now).forEach(r=>{
+    const p=getById('products',r.productId);
+    alerts.push({type:'error',msg:`تسجيل ${p?.name||'منتج'} منتهي`, page:'registration'});
+  });
+
+  // ذمم متأخرة
+  getAll('receivables').filter(r=>r.status!=='محصّل'&&r.dueDate&&new Date(r.dueDate)<now).forEach(r=>{
+    const d=getById('distributors',r.distributorId);
+    alerts.push({type:'warning',msg:`ذمة متأخرة: ${d?.name||'موزع'} — ${fmt(r.amount)} ج.م`, page:'receivables'});
+  });
+
+  // دفعات QC محجوزة
+  const qCount=getAll('materialReceipts').filter(r=>r.status==='quarantine').length;
+  if(qCount) alerts.push({type:'info',msg:`${qCount} دفعة مواد تحت الحجر الصحي — بانتظار QC`, page:'materials'});
+
+  // ضرائب متأخرة
+  getAll('taxLines').filter(t=>t.status==='معلق'&&t.dueDate&&new Date(t.dueDate)<now)
+    .forEach(t=> alerts.push({type:'error',msg:`ضريبة متأخرة: ${t.description||'—'} — ${fmt(t.amount)} ج.م`, page:'taxes'}));
+
+  return alerts;
+}
+
+function showAlertsDropdown(){
+  const alerts = getDashboardAlerts();
+  const btn    = document.getElementById('alerts-btn');
+  const badge  = document.getElementById('alerts-badge');
+  if(badge) badge.textContent = alerts.length||'';
+  if(badge) badge.style.display = alerts.length?'':'none';
+
+  let drop = document.getElementById('alerts-dropdown');
+  if(drop){ drop.remove(); return; }
+
+  drop=document.createElement('div');
+  drop.id='alerts-dropdown';
+  drop.style.cssText='position:fixed;top:60px;left:16px;width:360px;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9990;max-height:400px;overflow-y:auto;direction:rtl';
+  drop.innerHTML=`
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <span style="font-weight:700">🔔 التنبيهات (${alerts.length})</span>
+      <button onclick="document.getElementById('alerts-dropdown').remove()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">×</button>
+    </div>
+    ${alerts.length ? alerts.map(a=>`
+      <div onclick="go('${a.page}');document.getElementById('alerts-dropdown')?.remove()" style="padding:10px 16px;border-bottom:1px solid rgba(48,54,61,.4);cursor:pointer;display:flex;align-items:flex-start;gap:10px" onmouseover="this.style.background='var(--hover)'" onmouseout="this.style.background=''">
+        <span>${a.type==='error'?'🔴':a.type==='warning'?'🟡':'🔵'}</span>
+        <span style="font-size:12px;color:var(--text)">${a.msg}</span>
+      </div>`).join('')
+    : '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">✅ لا توجد تنبيهات</div>'}`;
+
+  document.body.appendChild(drop);
+  setTimeout(()=>document.addEventListener('click', function h(e){
+    if(!drop.contains(e.target)&&e.target.id!=='alerts-btn'){drop.remove();document.removeEventListener('click',h);}
+  }), 100);
+}
+
+// ══ 6. PAGINATION ────────────────────────────────────────────
+const PAGE_SIZE = 25;
+const _pageState = {};
+
+function paginate(tableId, allRows, renderFn){
+  const page  = _pageState[tableId] || 1;
+  const total = allRows.length;
+  const pages = Math.ceil(total / PAGE_SIZE);
+  const start = (page-1)*PAGE_SIZE;
+  const slice = allRows.slice(start, start+PAGE_SIZE);
+
+  const content = renderFn(slice);
+  const pagination = total > PAGE_SIZE ? `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--border);font-size:12px">
+      <span style="color:var(--muted)">${start+1}–${Math.min(start+PAGE_SIZE,total)} من ${fmtN(total)}</span>
+      <div style="display:flex;gap:4px">
+        ${page>1?`<button class="btn btn-ghost btn-sm" onclick="_pageState['${tableId}']=${page-1};go(currentPage)">← السابق</button>`:''}
+        ${Array.from({length:Math.min(pages,7)},(_,i)=>{
+          const p=Math.max(1,Math.min(page-3,pages-6))+i;
+          return p>=1&&p<=pages?`<button class="btn btn-ghost btn-sm${p===page?' btn-green':'`}" style="${p===page?'background:var(--green);color:#fff':''}" onclick="_pageState['${tableId}']=${p};go(currentPage)">${p}</button>`:'';
+        }).join('')}
+        ${page<pages?`<button class="btn btn-ghost btn-sm" onclick="_pageState['${tableId}']=${page+1};go(currentPage)">التالي →</button>`:''}
+      </div>
+      <span style="color:var(--muted)">صفحة ${page} من ${pages}</span>
+    </div>` : '';
+  return content + pagination;
+}
+
+// ══ 7. QUICK ACTIONS (keyboard shortcuts) ────────────────────
+document.addEventListener('keydown', function(e){
+  // Ctrl+K = global search focus
+  if((e.ctrlKey||e.metaKey) && e.key==='k'){
+    e.preventDefault();
+    document.getElementById('global-search-bar')?.focus();
+  }
+  // Ctrl+N = new record (context sensitive)
+  if((e.ctrlKey||e.metaKey) && e.key==='n'){
+    e.preventDefault();
+    const newBtns = document.querySelectorAll('.btn-green');
+    for(const btn of newBtns){
+      if(btn.textContent.includes('إضافة')||btn.textContent.includes('جديد')){
+        btn.click(); break;
+      }
+    }
+  }
+  // Escape = close modal
+  if(e.key==='Escape') closeModal();
+  // Ctrl+S = export excel from reports
+  if((e.ctrlKey||e.metaKey) && e.key==='s' && currentPage==='reports'){
+    e.preventDefault();
+    exportFinancialExcel();
+  }
+});
+
+// ══ 8. TABLE SEARCH INLINE (per-page) ────────────────────────
+// Override tbl() helper to add search + sort automatically
+const _origTbl = tbl;
+function tbl(headers, rows){
+  const tableId = 'tbl-' + Math.random().toString(36).slice(2,7);
+  const inner   = _origTbl(headers, rows);
+
+  // Inject id into table
+  const withId  = inner.replace('<table>', `<table id="${tableId}">`);
+
+  const searchBar = rows.length > 5 ? `
+    <div style="display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);align-items:center">
+      <input type="text" placeholder="🔍 ابحث..." 
+        style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--text);font-family:'Cairo',sans-serif"
+        oninput="(function(q){const t=document.getElementById('${tableId}');if(!t)return;let v=0;t.querySelectorAll('tbody tr').forEach(r=>{const s=r.textContent.toLowerCase().includes(q.toLowerCase());r.style.display=s?'':'none';if(s)v++;});const c=document.getElementById('cnt-${tableId}');if(c)c.textContent=v+' سجل';})(this.value)">
+      <span id="cnt-${tableId}" style="font-size:11px;color:var(--muted);white-space:nowrap">${rows.length} سجل</span>
+    </div>` : '';
+
+  return searchBar + withId.replace(
+    '<thead>',
+    `<thead onclick="(function(th){if(th.tagName!=='TH')return;const t=document.getElementById('${tableId}');const i=Array.from(t.querySelectorAll('th')).indexOf(th);if(i<0)return;const k='${tableId}-'+i;const asc=!window._srt?.[k];window._srt=window._srt||{};window._srt[k]=asc;const rows=Array.from(t.querySelectorAll('tbody tr'));rows.sort((a,b)=>{const av=a.cells[i]?.textContent?.trim()||'';const bv=b.cells[i]?.textContent?.trim()||'';const an=parseFloat(av.replace(/,/g,''));const bn=parseFloat(bv.replace(/,/g,''));if(!isNaN(an)&&!isNaN(bn))return asc?an-bn:bn-an;return asc?av.localeCompare(bv,'ar'):bv.localeCompare(av,'ar');});const tb=t.querySelector('tbody');rows.forEach(r=>tb.appendChild(r));th.querySelectorAll('span.sort-arr').forEach(s=>s.remove());const arr=document.createElement('span');arr.className='sort-arr';arr.style.cssText='font-size:9px;margin-right:4px;color:var(--green-light)';arr.textContent=asc?'↑':'↓';th.prepend(arr);})(event.target.closest('th'))">`
+  );
+}
+
+// ══ 9. CONFIRM DELETE (better UX) ────────────────────────────
+function confirmDelete(msg, onConfirm){
+  showModal(modal('تأكيد الحذف',`
+    <div style="text-align:center;padding:8px 0 16px">
+      <div style="font-size:48px;margin-bottom:12px">🗑️</div>
+      <div style="font-size:14px;color:var(--text);margin-bottom:6px">${msg||'هل أنت متأكد من الحذف؟'}</div>
+      <div style="font-size:12px;color:var(--red)">لا يمكن التراجع عن هذا الإجراء</div>
+    </div>
+    <div class="form-actions" style="justify-content:center">
+      <button class="btn btn-danger" onclick="closeModal();(${onConfirm.toString()})()">🗑️ نعم، احذف</button>
+      <button class="btn btn-ghost" onclick="closeModal()">إلغاء</button>
+    </div>`));
+}
+
+// ══ 10. LOADING SPINNER ──────────────────────────────────────
+function showLoading(msg='جاري التحميل...'){
+  let ov=document.getElementById('loading-ov');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='loading-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+    ov.innerHTML=`<div style="width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div>
+      <div style="color:var(--text);font-size:13px;font-family:'Cairo',sans-serif">${msg}</div>`;
+    if(!document.getElementById('spin-style')){
+      const s=document.createElement('style');s.id='spin-style';
+      s.textContent='@keyframes spin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(s);
+    }
+    document.body.appendChild(ov);
+  }
+}
+function hideLoading(){ document.getElementById('loading-ov')?.remove(); }
+
+// ══ 11. INIT ALL UX FEATURES ─────────────────────────────────
+function initUXFeatures(){
+  // Initialize global search
+  initGlobalSearch();
+  // Update alerts badge
+  const alerts = getDashboardAlerts();
+  const badge  = document.getElementById('alerts-badge');
+  if(badge){
+    badge.textContent = alerts.length||'';
+    badge.style.display = alerts.length?'flex':'none';
+  }
+  // Show critical alerts as notifications on load
+  const critical = getDashboardAlerts().filter(a=>a.type==='error');
+  if(critical.length){
+    setTimeout(()=>showNotif(`${critical.length} تنبيه يحتاج انتباهك`, 'warning', 6000), 1000);
+  }
+}
+
+// Auto-run after page loads
+window.addEventListener('load', ()=> setTimeout(initUXFeatures, 500));
+// Re-run on page change
+const _origGo = go;
+function go(page){
+  _origGo(page);
+  setTimeout(initUXFeatures, 200);
 }
 
 // renderNav/go called by coEnter() after company is selected
