@@ -810,7 +810,7 @@ deliveries(){
         o.orderDate||'-',
         o.totalAmount?`<span class="text-green fw7">${fmt(o.totalAmount)} ج.م</span>`:'-',
         badge(o.status||'pending'),
-        `<div class="action-bar">${o.status==='pending'?`<button class="icon-btn" style="color:var(--green)" onclick="if(confirm('تأكيد التسليم؟')){update('deliveryOrders',${o.id},{status:'delivered'});go('deliveries')}" title="تأكيد التسليم">${ic.check}</button>`:''}<button class="icon-btn del" onclick="if(confirm('حذف؟')){remove('deliveryOrders',${o.id});go('deliveries')}">${ic.del}</button></div>`
+        `<div class="action-bar">${o.status==='pending'?`<button class="icon-btn" style="color:var(--green)" onclick="if(confirm('تأكيد التسليم؟')){update('deliveryOrders',${o.id},{status:'delivered'});go('deliveries')}" title="تأكيد التسليم">${ic.check}</button>`:''}<button class="icon-btn del" onclick="if(confirm('حذف؟')){remove('deliveryOrders',${o.id});go('deliveries')}">${ic.del}</button><button class="icon-btn edit" onclick="editDelivery(${o.id})">${ic.edit}</button></div>`
       ))
     )}</div>`);
 },
@@ -873,7 +873,7 @@ budget(){
     <div id="bud-lines" class="tab-pane" data-group="bud"><div class="card">${tbl(['السنة','الشهر','القسم','الفئة','الوصف','المبلغ المخطط',''],
       lines.map(l=>tr(l.year,l.month?MONTHS[l.month-1]:'سنوي',l.department||'-',l.category,l.description||'-',
         `<span class="text-blue fw7">${fmt(l.budgetedAmount)} ج.م</span>`,
-        `<button class="icon-btn del" onclick="if(confirm('حذف؟')){remove('budgetLines',${l.id});go('budget')}">${ic.del}</button>`
+        `<button class="icon-btn del" onclick="if(confirm('حذف؟')){remove('budgetLines',${l.id});go('budget')}">${ic.del}</button><button class="icon-btn edit" onclick="editBudget(${l.id})">${ic.edit}</button>`
       ))
     )}</div></div>
     <div id="bud-cmp" class="tab-pane" data-group="bud" style="display:none"><div class="card">${tbl(['الفئة','المخطط','الفعلي','الفرق','نسبة الاستهلاك'],
@@ -1021,7 +1021,7 @@ function renderExpTbl(type){
     rows.map(e=>tr(`<strong>${e.description}</strong>`,
       `<span class="${e.expenseType==='direct'?'text-blue':'text-purple'} fw7">${fmt(e.amount)} ج.م</span>`,
       badge(e.expenseType),e.category,e.department||'-',e.expenseDate||'-',e.reference||'-',
-      `<div class="action-bar"><button class="icon-btn edit" onclick="editExpense(${e.id})">${ic.edit}</button><button class="icon-btn del" onclick="if(confirm('حذف؟')){remove('expenses',${e.id});go('expenses')}">${ic.del}</button></div>`
+      `<div class="action-bar"><button class="icon-btn edit" onclick="editExpense(${e.id})">${ic.edit}</button><button class="icon-btn del" onclick="if(confirm('حذف؟')){remove('expenses',${e.id});go('expenses')}">${ic.del}</button><button class="icon-btn edit" onclick="editExpense(${e.id})">${ic.edit}</button></div>`
     ))
   ));
 }
@@ -1711,7 +1711,7 @@ PAGES.salesvstarget=function(){
   const targets=getAll('salesTargets');
   const deliveries=getAll('deliveryOrders').filter(o=>o.status==='delivered');
   setPage('المبيعات vs الأهداف','مقارنة المبيعات الفعلية بالأهداف المحددة','',
-    `<div class="card">${tbl(['المنتج','الموزع','السنة','الشهر','الهدف (ج.م)','الفعلي (ج.م)','الفرق (ج.م)','نسبة التحقق'],
+    `<div class="card">${tbl(['المنتج','الموزع','السنة','الشهر','الهدف (ج.م)','الفعلي (ج.م)','الفرق (ج.م)','نسبة التحقق',''],
       targets.map(t=>{
         const prod=getAll('products').find(p=>p.id===t.productId);
         const dist=getAll('distributors').find(d=>d.id===t.distributorId);
@@ -2543,7 +2543,7 @@ PAGES.taxes = function(){
         badge(t.status==='مدفوع'?'received':t.status==='معلق'?'pending':'cancelled'),
         `<div class="action-bar">
           ${t.status==='معلق'?`<button class="btn btn-green btn-sm" onclick="markTaxPaid(${t.id})">✅ تأكيد السداد</button>`:''}
-          <button class="icon-btn del" onclick="if(confirm('حذف؟')){remove('taxLines',${t.id});go('taxes')}">${ic.del}</button>
+          <button class="icon-btn del" onclick="if(confirm('حذف؟')){remove('taxLines',${t.id});go('taxes')}">${ic.del}</button><button class="icon-btn edit" onclick="editTaxLine(${t.id})">${ic.edit}</button>
         </div>`
       ))
     )}</div>`);
@@ -8305,6 +8305,201 @@ function initUXFeatures(){
 window.addEventListener('load', ()=> setTimeout(initUXFeatures, 500));
 // Re-run on page change — patch via event instead of redefine
 document.addEventListener('erp-page-changed', ()=> setTimeout(initUXFeatures, 200));
+
+// ════════════════════════════════════════════════════════════════
+// CRUD FIXES — إصلاح كل الصفحات الناقصة
+// ════════════════════════════════════════════════════════════════
+
+// ── 1. EXPENSES — إضافة تعديل وحذف ──────────────────────────
+function editExpense(id){
+  const e=getById('expenses',id); if(!e) return;
+  showModal(modal('تعديل مصروف',expenseForm(e)));
+  setTimeout(()=>initTabs(),100);
+}
+
+// ── 2. DELIVERIES — إضافة تعديل ─────────────────────────────
+function editDelivery(id){
+  const o=getById('deliveryOrders',id); if(!o) return;
+  const dists=getAll('distributors');
+  const dOpts=[{v:0,l:'اختر موزع...'},...dists.map(d=>({v:d.id,l:d.name}))];
+  showModal(modal('تعديل أمر توريد',`
+    ${fg('الموزع *',sel('do-dist',dOpts,o.distributorId))}
+    <div class="form-row">
+      ${fg('رقم الأمر',inp('do-num','text',o.orderNumber))}
+      ${fg('تاريخ الأمر',inp('do-date','date',o.orderDate))}
+    </div>
+    <div class="form-row">
+      ${fg('إجمالي المبلغ (ج.م)',inp('do-amt','number',o.totalAmount))}
+      ${fg('ضريبة VAT (ج.م)',inp('do-vat','number',o.vatAmount||0))}
+    </div>
+    ${fg('الحالة',sel('do-status',[{v:'pending',l:'معلق'},{v:'delivered',l:'مسلّم'},{v:'cancelled',l:'ملغي'}],o.status))}
+    <div class="form-actions">
+      <button class="btn btn-green" onclick="saveDeliveryEdit(${id})">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal()">إلغاء</button>
+    </div>`));
+}
+
+function saveDeliveryEdit(id){
+  const distId=numVal('do-dist'); if(!distId) return alert('اختر الموزع');
+  update('deliveryOrders',id,{
+    distributorId:distId,orderNumber:val('do-num')||null,
+    orderDate:val('do-date')||null,totalAmount:val('do-amt')||null,
+    vatAmount:val('do-vat')||null,status:val('do-status')
+  });
+  closeModal(); go('deliveries');
+}
+
+// ── 3. BUDGET — إضافة تعديل ──────────────────────────────────
+function editBudget(id){
+  const b=getById('budgetLines',id); if(!b) return;
+  showModal(modal('تعديل بند الميزانية',`
+    <div class="form-row">
+      ${fg('الفئة *',inp('bl-cat','text',b.category))}
+      ${fg('القسم',inp('bl-dept','text',b.department))}
+    </div>
+    <div class="form-row">
+      ${fg('السنة',inp('bl-year','number',b.year||new Date().getFullYear()))}
+      ${fg('المبلغ المخطط (ج.م) *',inp('bl-amt','number',b.budgetedAmount))}
+    </div>
+    ${fg('ملاحظات',inp('bl-notes','text',b.notes))}
+    <div class="form-actions">
+      <button class="btn btn-green" onclick="saveBudgetEdit(${id})">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal()">إلغاء</button>
+    </div>`));
+}
+function saveBudgetEdit(id){
+  if(!val('bl-cat')||!val('bl-amt')) return alert('يرجى تعبئة الفئة والمبلغ');
+  update('budgetLines',id,{category:val('bl-cat'),department:val('bl-dept')||null,year:val('bl-year')||new Date().getFullYear(),budgetedAmount:val('bl-amt'),notes:val('bl-notes')||null});
+  closeModal(); go('budget');
+}
+
+// ── 4. VAT — إضافة بيانات يدوية ──────────────────────────────
+function addVATEntry(){
+  showModal(modal('➕ إضافة قيد ضريبي يدوي',`
+    <div style="padding:10px;background:rgba(56,139,253,.08);border:1px solid rgba(56,139,253,.2);border-radius:8px;font-size:12px;margin-bottom:12px">
+      💡 الـ VAT بيُحسب تلقائياً من أوامر التوريد والمشتريات. أضف هنا أي قيود يدوية إضافية.
+    </div>
+    <div class="form-row">
+      ${fg('النوع *',sel('vt-type',[{v:'output',l:'مخرجات (على المبيعات)'},{v:'input',l:'مدخلات (على المشتريات)'},{v:'adjustment',l:'تسوية'}],'output'))}
+      ${fg('المبلغ (ج.م) *',inp('vt-amt','number','','0.00'))}
+    </div>
+    <div class="form-row">
+      ${fg('الفترة',inp('vt-period','text',new Date().toISOString().slice(0,7),'مثال: 2024-01'))}
+      ${fg('تاريخ الاستحقاق',inp('vt-due','date',''))}
+    </div>
+    ${fg('الوصف',inp('vt-desc','text','','مثال: VAT على توريد يناير'))}
+    ${fg('الحالة',sel('vt-status',[{v:'معلق',l:'معلق'},{v:'مدفوع',l:'مدفوع'}],'معلق'))}
+    <div class="form-actions">
+      <button class="btn btn-green" onclick="saveVATEntry()">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal()">إلغاء</button>
+    </div>`));
+}
+function saveVATEntry(){
+  const amt=val('vt-amt'); if(!amt) return alert('يرجى إدخال المبلغ');
+  insert('taxLines',{taxType:'vat',description:val('vt-desc')||'قيد VAT يدوي',
+    amount:amt,period:val('vt-period')||null,dueDate:val('vt-due')||null,
+    status:val('vt-status'),entryType:val('vt-type')});
+  closeModal(); go('vat');
+}
+function editVATEntry(id){
+  const t=getById('taxLines',id); if(!t) return;
+  showModal(modal('تعديل قيد ضريبي',`
+    <div class="form-row">
+      ${fg('المبلغ (ج.م)',inp('vt-amt','number',t.amount))}
+      ${fg('الفترة',inp('vt-period','text',t.period))}
+    </div>
+    ${fg('الوصف',inp('vt-desc','text',t.description))}
+    ${fg('الحالة',sel('vt-status',[{v:'معلق',l:'معلق'},{v:'مدفوع',l:'مدفوع'}],t.status))}
+    <div class="form-actions">
+      <button class="btn btn-green" onclick="saveVATEdit(${id})">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal()">إلغاء</button>
+    </div>`));
+}
+function saveVATEdit(id){
+  update('taxLines',id,{amount:val('vt-amt'),period:val('vt-period')||null,description:val('vt-desc')||null,status:val('vt-status')});
+  closeModal(); go('vat');
+}
+
+// ── 5. TAXES — إضافة تعديل ───────────────────────────────────
+function editTaxLine(id){
+  const t=getById('taxLines',id); if(!t) return;
+  showModal(modal('تعديل الضريبة',`
+    <div class="form-row">
+      ${fg('نوع الضريبة',sel('tx-type',[{v:'income',l:'ضريبة دخل'},{v:'vat',l:'VAT'},{v:'stamp',l:'دمغة'},{v:'withholding',l:'خصم وإضافة'},{v:'other',l:'أخرى'}],t.taxType))}
+      ${fg('المبلغ (ج.م)',inp('tx-amt','number',t.amount))}
+    </div>
+    <div class="form-row">
+      ${fg('الفترة',inp('tx-period','text',t.period))}
+      ${fg('تاريخ الاستحقاق',inp('tx-due','date',t.dueDate))}
+    </div>
+    ${fg('الوصف',inp('tx-desc','text',t.description))}
+    ${fg('الحالة',sel('tx-status',[{v:'معلق',l:'معلق'},{v:'مدفوع',l:'مدفوع'},{v:'متنازع عليه',l:'متنازع عليه'}],t.status))}
+    <div class="form-actions">
+      <button class="btn btn-green" onclick="saveTaxEdit(${id})">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal()">إلغاء</button>
+    </div>`));
+}
+function saveTaxEdit(id){
+  update('taxLines',id,{taxType:val('tx-type'),amount:val('tx-amt'),period:val('tx-period')||null,dueDate:val('tx-due')||null,description:val('tx-desc')||null,status:val('tx-status')});
+  closeModal(); go('taxes');
+}
+
+// ── 6. SALES vs TARGET — إضافة تعديل وحذف ───────────────────
+function editTarget(id){
+  const t=getById('salesTargets',id); if(!t) return;
+  const prods=getAll('products');
+  const dists=getAll('distributors');
+  showModal(modal('تعديل الهدف',`
+    <div class="form-row">
+      ${fg('المنتج',sel('st-prod',[{v:0,l:'كل المنتجات'},...prods.map(p=>({v:p.id,l:p.name}))],t.productId||0))}
+      ${fg('الموزع',sel('st-dist',[{v:0,l:'كل الموزعين'},...dists.map(d=>({v:d.id,l:d.name}))],t.distributorId||0))}
+    </div>
+    <div class="form-row">
+      ${fg('السنة',inp('st-year','number',t.year||new Date().getFullYear()))}
+      ${fg('الشهر',sel('st-month',[{v:0,l:'السنة كاملة'},...MONTHS.map((m,i)=>({v:i+1,l:m}))],t.month||0))}
+    </div>
+    <div class="form-row">
+      ${fg('الهدف (ج.م) *',inp('st-amt','number',t.targetAmount))}
+      ${fg('الكمية المستهدفة (وحدة)',inp('st-qty','number',t.targetQuantity||''))}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-green" onclick="saveTargetEdit(${id})">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal()">إلغاء</button>
+    </div>`));
+}
+function saveTargetEdit(id){
+  if(!val('st-amt')) return alert('يرجى إدخال الهدف');
+  update('salesTargets',id,{productId:numVal('st-prod')||null,distributorId:numVal('st-dist')||null,year:val('st-year'),month:numVal('st-month')||null,targetAmount:val('st-amt'),targetQuantity:val('st-qty')||null});
+  closeModal(); go('salesvstarget');
+}
+
+// ── 7. EXPIRY — إضافة تعديل وحذف ────────────────────────────
+function editInventoryExpiry(id){
+  const i=getById('inventory',id); if(!i) return;
+  const p=getById('products',i.productId);
+  showModal(modal('تعديل بيانات المخزون — '+( p?.name||''),`
+    <div class="form-row">
+      ${fg('رقم الدفعة',inp('ie-batch','text',i.batchNumber||''))}
+      ${fg('الكمية',inp('ie-qty','number',i.quantity))}
+    </div>
+    <div class="form-row">
+      ${fg('تكلفة الوحدة (ج.م)',inp('ie-cost','number',i.unitCost||''))}
+      ${fg('تاريخ التصنيع',inp('ie-mfg','date',i.manufacturingDate||''))}
+    </div>
+    <div class="form-row">
+      ${fg('تاريخ انتهاء الصلاحية *',inp('ie-exp','date',i.expiryDate||''))}
+      ${fg('تاريخ إعادة الاختبار',inp('ie-retest','date',i.retestDate||''))}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-green" onclick="saveInventoryExpiry(${id})">💾 حفظ</button>
+      <button class="btn btn-ghost" onclick="closeModal()">إلغاء</button>
+    </div>`));
+}
+function saveInventoryExpiry(id){
+  update('inventory',id,{batchNumber:val('ie-batch')||null,quantity:val('ie-qty'),unitCost:val('ie-cost')||null,manufacturingDate:val('ie-mfg')||null,expiryDate:val('ie-exp')||null,retestDate:val('ie-retest')||null});
+  closeModal(); go('expiry');
+}
+
 
 // renderNav/go called by coEnter() after company is selected
 
